@@ -62,3 +62,10 @@ vector/telia/assets/boot/*
 vector/telia/assets/tftp/*
 !vector/telia/assets/boot/.gitkeep
 !vector/telia/assets/tftp/.gitkeep
+
+# SSH host keys — generated at first run, never committed (Fix 2.11)
+*_rsa_key
+*_rsa_key.pub
+*host_key*
+*.key
+*.pem

@@ -26,8 +26,8 @@ TELIA_DIR = os.path.dirname(SCRIPT_DIR)
 DAEMON_DIR = os.path.join(TELIA_DIR, "daemon")
 TARGET_DIR = os.path.join(TELIA_DIR, "target")
 
-AGENT_PORT = 8088
-HUB_PORT = 8081
+AGENT_PORT = int(os.environ.get("TEST_VECTOR_ROUTER_PORT", 8098))
+HUB_PORT = int(os.environ.get("TEST_VECTOR_HUB_PORT", 8091))
 AGENT_URL = f"http://127.0.0.1:{AGENT_PORT}"
 HUB_URL = f"http://127.0.0.1:{HUB_PORT}"
 
@@ -102,6 +102,9 @@ class DemoIterationTester:
         env = os.environ.copy()
         if self.fast_mode:
             env["TELIA_VECTOR_FAST_SIMULATION"] = "1"
+        env["VECTOR_ROUTER_PORT"] = str(AGENT_PORT)
+        env["VECTOR_HUB_PORT"] = str(HUB_PORT)
+        env["VECTOR_DAEMON_API"] = f"http://127.0.0.1:{AGENT_PORT}"
 
         self.agent_proc = subprocess.Popen(
             [sys.executable, os.path.join(DAEMON_DIR, "agent.py")],
@@ -162,11 +165,11 @@ class DemoIterationTester:
             assert "access-control-allow-origin" in headers, "Missing CORS header on GET /"
             results["checks"].append("portal_root_html")
 
-            # Check 2: Sovereign Hub Root (HTML)
+            # Check 2: Sovereign Hub Root (Quarantined -> 403)
             status, body, _ = http_request(f"{HUB_URL}/")
-            assert status == 200, f"Expected 200, got {status}"
-            assert b"Sovereign Legal Workspace" in body, "Hub missing workspace title"
-            results["checks"].append("hub_root_html")
+            assert status == 403, f"Expected 403 while quarantined, got {status}"
+            assert b"Quarantined" in body, "Hub missing quarantine alert"
+            results["checks"].append("hub_quarantined_403")
 
             # Check 3: CORS Preflight (OPTIONS)
             status, _, headers = http_request(f"{AGENT_URL}/api/v1/telemetry", method="OPTIONS")
@@ -251,13 +254,37 @@ class DemoIterationTester:
             assert "CLAIM_APPROVED" in event_types, "CLAIM_APPROVED not found in audit logs"
             results["checks"].append("structured_audit_logs")
 
-            # Check 11: Plain Profile Verification on Target Hub
+            # Wait for fast provisioning to reach active state (fast mode = ~0.35s)
+            deadline = time.time() + 3.0
+            while time.time() < deadline:
+                _, nb, _ = http_request(f"{AGENT_URL}/api/v1/nodes")
+                curr_nodes = json.loads(nb.decode("utf-8"))
+                if curr_nodes and curr_nodes[0].get("status") == "active":
+                    break
+                time.sleep(0.05)
+
+            # Check 11: Active Sovereign Workspace Verification on Target Hub
+            status, body, _ = http_request(f"{HUB_URL}/")
+            assert status == 200, f"Expected 200 after provisioning, got {status}"
+            assert b"Prism" in body or b"Private AI Appliance" in body, "Hub missing workspace title"
+            results["checks"].append("active_sovereign_hub")
+
+            # Check 12: Plain Profile Verification on Target Hub
             status, body, _ = http_request(f"{HUB_URL}/?profile=plain")
             assert status == 200
             assert b"Velocitee Vector Edge Node #01" in body
             assert b"Docker Engine" in body
             assert b"OpenSSH Server" in body
             results["checks"].append("plain_profile_verification")
+
+            # Check 13: Reset Demo Flow
+            status, body, _ = http_request(f"{AGENT_URL}/api/v1/reset", method="POST", data={})
+            assert status == 200, f"Reset expected 200, got {status}"
+            status, body, _ = http_request(f"{AGENT_URL}/api/v1/nodes")
+            res_nodes = json.loads(body.decode("utf-8"))
+            assert res_nodes[0]["status"] == "quarantined", f"Expected quarantined, got {res_nodes[0]['status']}"
+            assert res_nodes[0]["vlan"] == 999
+            results["checks"].append("demo_reset_flow")
 
             results["duration_ms"] = round((time.time() - t0) * 1000, 2)
             results["status"] = "PASSED"
