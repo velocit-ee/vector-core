@@ -14,9 +14,16 @@
 Velocitee Vector is a pipeline of four independent engines. Each one does one thing, writes a structured handoff manifest, and passes it to the next. Enter the pipeline wherever your hardware already is.
 
 ```
-bare metal ──► VME ──► VNE ──► VSE ──► VLE ──► documented, running stack
-               │        │       │        │
-            provision  network  services  lifecycle
+    bare metal
+         │
+         ▼
+   ┌───────────┐       ┌───────────┐       ┌───────────┐       ┌───────────┐
+   │    VME    │──────▶│    VNE    │──────▶│    VSE    │──────▶│    VLE    │──────▶ documented,
+   │ provision │       │  network  │       │ services  │       │ lifecycle │        running
+   └───────────┘       └───────────┘       └───────────┘       └───────────┘        stack
+     PXE boot            OPNsense           containers          monitoring
+   + OS install        + VLANs/DHCP        + idempotent        + drift
+                       + DNS + FW          + git-driven        + auto-docs
 ```
 
 <!-- ENGINE-STATUS:BEGIN region=engine-table -->
