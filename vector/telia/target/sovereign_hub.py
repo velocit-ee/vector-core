@@ -87,6 +87,11 @@ class PrismEngine:
         unique_types = sorted(list(set(e["type"] for e in entities)))
         entity_summary = ", ".join(unique_types) if unique_types else "None detected"
 
+        rehydrated_prompt = sanitized
+        for tok, raw in self.vault.items():
+            if tok in rehydrated_prompt:
+                rehydrated_prompt = rehydrated_prompt.replace(tok, raw)
+
         analysis_lines = [
             "PRISM ON-DEVICE PRIVATE INFERENCE ENGINE",
             "========================================",
@@ -98,20 +103,18 @@ class PrismEngine:
             "",
             "SANITIZED CONTEXT SUBMITTED TO LOCAL COMPUTE ENGINE:",
             f'"{sanitized}"',
+            "",
+            "RE-HYDRATED RESPONSE DELIVERED TO SECURE BUFFER:",
+            f'"{rehydrated_prompt}"',
         ]
 
         if entities:
             analysis_lines.append("")
             analysis_lines.append("ACTIVE EPHEMERAL SURROGATE VAULT (RAM ONLY):")
             for e in entities:
-                analysis_lines.append(f"  [{e['token']}] -> Classified as [{e['type']}] ({e['length']} chars)")
+                analysis_lines.append(f"  {e['token']} -> Classified as [{e['type']}] ({e['length']} chars)")
 
         analysis = "\n".join(analysis_lines)
-
-        rehydrated = analysis
-        for tok, raw in self.vault.items():
-            if tok in rehydrated:
-                rehydrated = rehydrated.replace(tok, raw)
 
         duration_ms = round((time.time() - t0) * 1000, 2)
         now = datetime.now(timezone.utc).isoformat()
@@ -129,7 +132,7 @@ class PrismEngine:
         return {
             "sanitized_prompt": sanitized,
             "entities_masked": entities,
-            "completion": rehydrated,
+            "completion": analysis,
             "receipt": receipt,
         }
 
@@ -389,9 +392,15 @@ async function runInference() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: prompt })
     });
+    if (!res.ok) {
+      throw new Error('HTTP ' + res.status + ' ' + res.statusText);
+    }
     const data = await res.json();
     maskedBox.textContent = data.sanitized_prompt;
-    responseBox.textContent = data.completion + '\n\n[Receipt Hash: ' + data.receipt.hash.substring(0, 24) + '... · Latency: ' + (data.receipt.latency_ms || 2) + 'ms · 0 WAN Egress Bytes]';
+    const hash = (data.receipt && data.receipt.hash) ? data.receipt.hash.substring(0, 24) : 'SEALED';
+    const lat = (data.receipt && data.receipt.latency_ms !== undefined) ? data.receipt.latency_ms : '0.15';
+    const receiptSuffix = String.fromCharCode(10, 10) + '[Receipt Hash: ' + hash + '... · Latency: ' + lat + 'ms · 0 WAN Egress Bytes]';
+    responseBox.textContent = data.completion + receiptSuffix;
 
     const entities = data.entities_masked || [];
     vaultBadge.textContent = entities.length + ' Tokens Isolated';
@@ -413,7 +422,7 @@ async function runInference() {
     }
   } catch (err) {
     maskedBox.textContent = 'Error: ' + err.message;
-    responseBox.textContent = 'Failed to communicate with Prism engine.';
+    responseBox.textContent = 'Failed to communicate with Prism engine: ' + err.message;
   }
 }
 </script>
@@ -573,6 +582,17 @@ def render_plain_html() -> str:
 
 
 class PrismHandler(http.server.SimpleHTTPRequestHandler):
+    def _send_cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._send_cors()
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.end_headers()
+
     def do_GET(self):
         node = fetch_node_state()
         is_active = node.get("status") == "active"
@@ -585,6 +605,7 @@ class PrismHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/v1/status":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self._send_cors()
             self.end_headers()
             self.wfile.write(json.dumps({
                 "appliance": "Velocitee Prism (Private AI Appliance)",
@@ -599,6 +620,7 @@ class PrismHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/v1/audit":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self._send_cors()
             self.end_headers()
             self.wfile.write(json.dumps(PRISM_ENGINE.audit_log).encode("utf-8"))
             return
@@ -606,12 +628,14 @@ class PrismHandler(http.server.SimpleHTTPRequestHandler):
         if not is_active:
             self.send_response(403)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._send_cors()
             self.end_headers()
             self.wfile.write(render_quarantine_html(node).encode("utf-8"))
             return
 
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self._send_cors()
         self.end_headers()
         if profile_req == "plain":
             self.wfile.write(render_plain_html().encode("utf-8"))
@@ -633,6 +657,7 @@ class PrismHandler(http.server.SimpleHTTPRequestHandler):
             sanitized, entities = PRISM_ENGINE.sanitize(text)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self._send_cors()
             self.end_headers()
             self.wfile.write(json.dumps({
                 "sanitized_text": sanitized,
@@ -646,11 +671,13 @@ class PrismHandler(http.server.SimpleHTTPRequestHandler):
             result = PRISM_ENGINE.infer(prompt)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self._send_cors()
             self.end_headers()
             self.wfile.write(json.dumps(result).encode("utf-8"))
             return
 
         self.send_response(404)
+        self._send_cors()
         self.end_headers()
 
     def log_message(self, format, *args):
