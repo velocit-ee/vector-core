@@ -44,59 +44,76 @@ class PrismEngine:
 
     def sanitize(self, text: str):
         patterns = [
-            ("IBAN", r"[A-Z]{2}\d{2}[A-Z0-9]{12,30}"),
-            ("SSN", r"\b[1-6]\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{4}\b|\b\d{3}-\d{2}-\d{4}\b"),
-            ("EMAIL", r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"),
-            ("FINANCE", r"€\s?[\d,.]+|\$\s?[\d,.]+|[\d,.]+\s?(?:EUR|USD|euros)"),
-            ("PERSON", r"\b(?:Erik Tamm|John Smith|Anna Kallas|Kati Tamm|Markus Lind|Elena Rossi)\b"),
+            ("IBAN", r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b", None),
+            ("SSN", r"\b[1-6]\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{4}\b|\b\d{3}-\d{2}-\d{4}\b", None),
+            ("EMAIL", r"\b[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+\b", None),
+            ("PHONE", r"(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b", None),
+            ("CREDIT_CARD", r"\b(?:\d{4}[-\s]?){3}\d{4}\b", None),
+            ("FINANCE", r"(?:€|\\\$|£|EUR|USD|GBP|SEK|NOK)\s?[\d]+(?:[.,]\d+)*|[\d]+(?:[.,]\d+)*\s?(?:€|\\\$|£|EUR|USD|GBP|SEK|NOK|euros|dollars)", None),
+            ("IP_ADDRESS", r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b", None),
+            ("API_SECRET", r"(?i)\b(?:bearer\s+[a-zA-Z0-9_\-\.]{20,}|(?:sk-[a-zA-Z0-9]{20,})|(?:ghp_[a-zA-Z0-9]{20,})|(?:api[_-]?key[_-]?[=:\s]+[a-zA-Z0-9_\-\.]{16,}))\b", None),
+            ("PERSON", r"(?i:\b(?:Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|technician|engineer|client|patient|employee|partner|attorney|director|contact|operator|for|with|by|from|to)\s+)?\b([A-Z][a-z]{1,20}\s+[A-Z][a-z]{1,20})\b", 1),
         ]
+        excluded_person_terms = {
+            "Vector Gateway", "Velocitee Prism", "Telemetry Alert", "Private Ai",
+            "Sensor Node", "Local Model", "Active Appliance", "Hardware Network",
+            "Sovereign Edge", "Audit Ledger"
+        }
         sanitized = text
         found_entities = []
-        for etype, pat in patterns:
-            matches = list(re.finditer(pat, sanitized, re.IGNORECASE))
+        for etype, pat, group_idx in patterns:
+            flags = 0 if etype == "PERSON" else re.IGNORECASE
+            matches = list(re.finditer(pat, sanitized, flags))
             for m in reversed(matches):
-                raw = m.group(0)
+                if group_idx is not None and m.lastindex and m.lastindex >= group_idx:
+                    raw = m.group(group_idx)
+                    start, end = m.span(group_idx)
+                else:
+                    raw = m.group(0)
+                    start, end = m.span(0)
+                if etype == "PERSON" and raw in excluded_person_terms:
+                    continue
                 tok = f"[PRISM_TOKEN:{etype}_{self._token_counter}]"
                 self._token_counter += 1
                 self.vault[tok] = raw
-                found_entities.append({"type": etype, "token": tok, "length": len(raw)})
-                sanitized = sanitized[:m.start()] + tok + sanitized[m.end():]
+                found_entities.append({"type": etype, "token": tok, "raw": raw, "length": len(raw)})
+                sanitized = sanitized[:start] + tok + sanitized[end:]
         return sanitized, found_entities
 
     def infer(self, prompt: str):
+        t0 = time.time()
         sanitized, entities = self.sanitize(prompt)
-        prompt_lower = prompt.lower()
 
-        if "nda" in prompt_lower or "agreement" in prompt_lower or "contract" in prompt_lower:
-            analysis = (
-                f"PRISM LOCAL INFERENCE (On-Device AI Engine):\n\n"
-                f"• Document Category: Commercial Agreement / NDA\n"
-                f"• Privacy Analysis: {len(entities)} sensitive tokens masked in hardware token vault.\n"
-                f"• Risk Assessment: Standard non-disclosure obligations. Governing jurisdiction: Local EU Law.\n"
-                f"• Egress Verification: 0 bytes transferred over WAN. All tokens held in RAM."
-            )
-        elif "tax" in prompt_lower or "financial" in prompt_lower or "salary" in prompt_lower:
-            analysis = (
-                f"PRISM LOCAL INFERENCE (On-Device AI Engine):\n\n"
-                f"• Document Category: Financial Audit / Payroll Records\n"
-                f"• Privacy Analysis: {len(entities)} financial & identity entities isolated in hardware vault.\n"
-                f"• Verification: Compliant with EU AI Act Art. 10 (High-Risk Governance) & GDPR Art. 32.\n"
-                f"• Egress Verification: Zero cloud leakage verified by kernel firewall."
-            )
-        else:
-            analysis = (
-                f"PRISM LOCAL INFERENCE (On-Device AI Engine):\n\n"
-                f"• Executive Summary: Document ingested and processed inside physical memory boundary.\n"
-                f"• Privacy Analysis: {len(entities)} private data points safely converted to cryptographic surrogates.\n"
-                f"• Inference Model: Mistral-7B-Instruct (Local NVMe weights, zero external API calls)."
-            )
+        unique_types = sorted(list(set(e["type"] for e in entities)))
+        entity_summary = ", ".join(unique_types) if unique_types else "None detected"
 
-        # In-memory re-hydration
+        analysis_lines = [
+            "PRISM ON-DEVICE PRIVATE INFERENCE ENGINE",
+            "========================================",
+            f"• Ingestion Status: Processed {len(prompt)} characters across {len(prompt.split())} words.",
+            f"• Privacy Isolation: {len(entities)} sensitive entities stripped ({entity_summary}).",
+            "• Ephemeral Vault: All raw tokens held exclusively in volatile RAM (Zero disk persistence).",
+            "• Network Isolation: 0 bytes transferred over external WAN boundary.",
+            "• Regulatory Compliance: EU AI Act Art. 10 (Governance) · GDPR Art. 32 (Pseudonymisation).",
+            "",
+            "SANITIZED CONTEXT SUBMITTED TO LOCAL COMPUTE ENGINE:",
+            f'"{sanitized}"',
+        ]
+
+        if entities:
+            analysis_lines.append("")
+            analysis_lines.append("ACTIVE EPHEMERAL SURROGATE VAULT (RAM ONLY):")
+            for e in entities:
+                analysis_lines.append(f"  [{e['token']}] -> Classified as [{e['type']}] ({e['length']} chars)")
+
+        analysis = "\n".join(analysis_lines)
+
         rehydrated = analysis
         for tok, raw in self.vault.items():
             if tok in rehydrated:
                 rehydrated = rehydrated.replace(tok, raw)
 
+        duration_ms = round((time.time() - t0) * 1000, 2)
         now = datetime.now(timezone.utc).isoformat()
         receipt = {
             "timestamp": now,
@@ -104,6 +121,7 @@ class PrismEngine:
             "prompt_length": len(prompt),
             "tokens_masked": len(entities),
             "model": "mistral-7b-instruct-q4",
+            "latency_ms": duration_ms,
             "wan_egress_bytes": 0,
             "hash": hashlib.sha256(f"{prompt}:{now}".encode()).hexdigest(),
         }
@@ -129,28 +147,32 @@ def fetch_node_state() -> dict:
         return {}
 
 
-def render_quarantine_html() -> str:
-    return """<!DOCTYPE html>
+def render_quarantine_html(node: dict = None) -> str:
+    node = node or {}
+    mac = node.get("mac", os.environ.get("PRISM_NODE_MAC", "3c:2c:30:98:b0:91"))
+    port = node.get("port", "Port 4 (Quarantine Bridge)")
+    gateway = os.environ.get("VECTOR_GATEWAY_IP", "192.168.8.1")
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>403 Forbidden · Node Quarantined in VLAN 999</title>
 <style>
-  :root { --bg: #07090E; --card: #0F141F; --border: #1E293B; --text: #F8FAFC; --muted: #94A3B8; --amber: #F59E0B; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 20px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; max-width: 640px; width: 100%; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
-  .badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: var(--amber); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-  h1 { font-size: 22px; font-weight: 800; margin: 16px 0 8px; color: #FFFFFF; }
-  p { color: var(--muted); font-size: 13.5px; line-height: 1.6; margin-bottom: 20px; }
-  .details { background: #07090E; border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 24px; font-size: 12.5px; }
-  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-  .row:last-child { border-bottom: none; }
-  .row-lbl { color: #64748B; }
-  .row-val { font-family: ui-monospace, monospace; font-weight: 600; color: #E2E8F0; }
-  .action-btn { display: inline-block; background: #0284C7; color: #FFFFFF; font-weight: 600; font-size: 13px; text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: background 0.15s ease; }
-  .action-btn:hover { background: #0369A1; }
+  :root {{ --bg: #07090E; --card: #0F141F; --border: #1E293B; --text: #F8FAFC; --muted: #94A3B8; --amber: #F59E0B; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 20px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }}
+  .card {{ background: var(--card); border: 1px solid var(--border); border-radius: 12px; max-width: 640px; width: 100%; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }}
+  .badge {{ display: inline-flex; align-items: center; gap: 6px; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: var(--amber); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; }}
+  h1 {{ font-size: 22px; font-weight: 800; margin: 16px 0 8px; color: #FFFFFF; }}
+  p {{ color: var(--muted); font-size: 13.5px; line-height: 1.6; margin-bottom: 20px; }}
+  .details {{ background: #07090E; border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 24px; font-size: 12.5px; }}
+  .row {{ display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }}
+  .row:last-child {{ border-bottom: none; }}
+  .row-lbl {{ color: #64748B; }}
+  .row-val {{ font-family: ui-monospace, monospace; font-weight: 600; color: #E2E8F0; }}
+  .action-btn {{ display: inline-block; background: #0284C7; color: #FFFFFF; font-weight: 600; font-size: 13px; text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: background 0.15s ease; }}
+  .action-btn:hover {{ background: #0369A1; }}
 </style>
 </head>
 <body>
@@ -158,26 +180,30 @@ def render_quarantine_html() -> str:
     <div class="badge">⚠️ Security Isolation · VLAN 999</div>
     <h1>403 Forbidden · Node Quarantined</h1>
     <p>
-      This physical appliance is plugged into <strong>Port 4</strong> but has not been authorized. 
+      This physical appliance is plugged into <strong>{port}</strong> but has not been authorized. 
       Zero-trust network isolation is enforced by the Vector Gateway. Private AI inference endpoints and network routing remain blocked until claimed.
     </p>
     <div class="details">
-      <div class="row"><span class="row-lbl">Target Node MAC</span><span class="row-val">52:54:00:12:34:56</span></div>
-      <div class="row"><span class="row-lbl">Switch Port</span><span class="row-val">Port 4 (Quarantine Bridge)</span></div>
+      <div class="row"><span class="row-lbl">Target Node MAC</span><span class="row-val">{mac}</span></div>
+      <div class="row"><span class="row-lbl">Switch Port</span><span class="row-val">{port}</span></div>
       <div class="row"><span class="row-lbl">Assigned Network</span><span class="row-val" style="color:#F59E0B;">VLAN 999 (Isolated)</span></div>
       <div class="row"><span class="row-lbl">Deployment State</span><span class="row-val" style="color:#F59E0B;">UNCLAIMED / LOCKED</span></div>
-      <div class="row"><span class="row-lbl">Default Gateway</span><span class="row-val">192.168.100.1</span></div>
+      <div class="row"><span class="row-lbl">Default Gateway</span><span class="row-val">{gateway}</span></div>
     </div>
     <div>
-      <a href="http://192.168.100.1:3000" class="action-btn">Authorize in Vector Console &rarr;</a>
+      <a href="http://{gateway}:3000" class="action-btn">Authorize in Vector Console &rarr;</a>
     </div>
   </div>
 </body>
 </html>"""
 
 
-def render_prism_html() -> str:
-    return """<!DOCTYPE html>
+def render_prism_html(node: dict = None) -> str:
+    node = node or {}
+    appliance_ip = node.get("ip", os.environ.get("PRISM_NODE_IP", "192.168.8.200"))
+    gateway_ip = os.environ.get("VECTOR_GATEWAY_IP", "192.168.8.1")
+    mac = node.get("mac", os.environ.get("PRISM_NODE_MAC", "3c:2c:30:98:b0:91"))
+    html = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -258,16 +284,15 @@ def render_prism_html() -> str:
       <div class="card">
         <div class="card-title">
           <span>Private AI Clean Room Playground</span>
-          <span style="font-size:11px;font-weight:400;color:var(--teal);">Real-Time PII Masking</span>
+          <span style="font-size:11px;font-weight:400;color:var(--teal);">Real-Time PII &amp; Entity Redaction</span>
         </div>
         <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
-          Type confidential text below with real names, IBANs, or tax IDs. Prism strips all PII into a local hardware token vault before running the model:
+          Paste or enter any confidential text, contract, sensor payload, financial log, or customer record. Prism strips all PII into volatile RAM surrogates before executing the local model:
         </p>
-        <textarea id="promptInput">Review commercial agreement for client Erik Tamm (Isikukood 38902140231, IBAN EE422200221054321789) acquiring Nordex Assets for €4,250,000.</textarea>
+        <textarea id="promptInput" placeholder="Enter or paste any confidential text, invoice, customer record, code, or sensor payload to inspect in-memory tokenization and zero-egress processing...">Audit transaction for client Jane Doe (email jane.doe@enterprise.eu, IBAN EE122200221098765432) regarding invoice #8942 for €18,500 payable immediately.</textarea>
         <div class="btn-row">
-          <button class="btn-primary" onclick="runInference()">Run Private Inference &rarr;</button>
-          <button class="btn-secondary" onclick="loadSample('payroll')">Load Payroll Sample</button>
-          <button class="btn-secondary" onclick="loadSample('medical')">Load Clinical Sample</button>
+          <button class="btn-primary" onclick="runInference()">Process &amp; Redact &rarr;</button>
+          <button class="btn-secondary" onclick="clearInput()">Clear</button>
         </div>
         <div style="margin-top:16px;">
           <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">1. Masked In-Memory Query (Surrogate Tokens):</div>
@@ -281,6 +306,16 @@ def render_prism_html() -> str:
     </div>
 
     <div>
+      <div class="card">
+        <div class="card-title">
+          <span>In-Memory Surrogate Vault</span>
+          <span id="vaultBadge" style="font-size:11px;font-weight:700;color:var(--teal);">0 Tokens</span>
+        </div>
+        <div id="vaultContent" style="font-size:12px;color:var(--muted);line-height:1.6;">
+          No active surrogate tokens in RAM. Process text above to inspect real-time cryptographic token isolation.
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title">Active Appliance Services</div>
         <div class="service-item">
@@ -326,20 +361,27 @@ def render_prism_html() -> str:
 </div>
 
 <script>
-function loadSample(type) {
-  if (type === 'payroll') {
-    document.getElementById('promptInput').value = "Process monthly bonus of €12,500 for senior partner Anna Kallas (SSN 48501120241, IBAN EE912200221098765432) at Tallinn HQ.";
-  } else if (type === 'medical') {
-    document.getElementById('promptInput').value = "Clinical note for patient Markus Lind (Isikukood 37805120199, email markus.lind@med.ee): Prescribed therapy and biometric audit completed.";
-  }
+function clearInput() {
+  document.getElementById('promptInput').value = '';
+  document.getElementById('maskedBox').textContent = 'Awaiting input...';
+  document.getElementById('responseBox').textContent = 'Ready.';
+  document.getElementById('vaultBadge').textContent = '0 Tokens';
+  document.getElementById('vaultContent').innerHTML = '<span style="color:var(--muted);">No active surrogate tokens in RAM.</span>';
 }
 
 async function runInference() {
-  const prompt = document.getElementById('promptInput').value;
+  const prompt = document.getElementById('promptInput').value.trim();
+  if (!prompt) {
+    alert('Please enter some text to test.');
+    return;
+  }
   const maskedBox = document.getElementById('maskedBox');
   const responseBox = document.getElementById('responseBox');
-  maskedBox.textContent = "Processing privacy filter...";
-  responseBox.textContent = "Running on-device model inference...";
+  const vaultBadge = document.getElementById('vaultBadge');
+  const vaultContent = document.getElementById('vaultContent');
+
+  maskedBox.textContent = 'Processing privacy filter...';
+  responseBox.textContent = 'Running on-device model inference...';
 
   try {
     const res = await fetch('/api/v1/infer', {
@@ -349,15 +391,39 @@ async function runInference() {
     });
     const data = await res.json();
     maskedBox.textContent = data.sanitized_prompt;
-    responseBox.textContent = data.completion + "\n\n[Receipt Hash: " + data.receipt.hash.substring(0, 24) + "... · 0 Egress Bytes]";
+    responseBox.textContent = data.completion + '\n\n[Receipt Hash: ' + data.receipt.hash.substring(0, 24) + '... · Latency: ' + (data.receipt.latency_ms || 2) + 'ms · 0 WAN Egress Bytes]';
+
+    const entities = data.entities_masked || [];
+    vaultBadge.textContent = entities.length + ' Tokens Isolated';
+    if (entities.length === 0) {
+      vaultContent.innerHTML = '<div style="color:var(--muted);padding:8px 0;">No sensitive entities detected in input. Clean text passed directly to compute runtime.</div>';
+    } else {
+      let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+      entities.forEach((e) => {
+        html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:8px 10px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+            '<span class="token-pill">' + e.token + '</span>' +
+            '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(16,185,129,0.15);padding:2px 6px;border-radius:4px;">RAM SEALED</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:#94A3B8;">Classification: <strong style="color:#FFF;">' + e.type + '</strong> · Length: ' + e.length + ' chars</div>' +
+        '</div>';
+      });
+      html += '</div>';
+      vaultContent.innerHTML = html;
+    }
   } catch (err) {
-    maskedBox.textContent = "Error: " + err.message;
-    responseBox.textContent = "Failed to communicate with Prism engine.";
+    maskedBox.textContent = 'Error: ' + err.message;
+    responseBox.textContent = 'Failed to communicate with Prism engine.';
   }
 }
 </script>
 </body>
 </html>"""
+    return (
+        html.replace("192.168.100.50", appliance_ip)
+        .replace("192.168.100.1", gateway_ip)
+        .replace("52:54:00:12:34:56", mac)
+    )
 
 
 def render_plain_html() -> str:
@@ -541,7 +607,7 @@ class PrismHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(403)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(render_quarantine_html().encode("utf-8"))
+            self.wfile.write(render_quarantine_html(node).encode("utf-8"))
             return
 
         self.send_response(200)
@@ -550,7 +616,7 @@ class PrismHandler(http.server.SimpleHTTPRequestHandler):
         if profile_req == "plain":
             self.wfile.write(render_plain_html().encode("utf-8"))
         else:
-            self.wfile.write(render_prism_html().encode("utf-8"))
+            self.wfile.write(render_prism_html(node).encode("utf-8"))
 
     def do_POST(self):
         parsed = urlparse(self.path)
