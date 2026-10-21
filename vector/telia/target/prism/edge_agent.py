@@ -137,7 +137,7 @@ class EdgeProvisioningAgent:
                 with urllib.request.urlopen(self._nodes_url, timeout=1.5) as resp:
                     if resp.status == 200:
                         data = json.loads(resp.read().decode("utf-8"))
-                        nodes = data.get("nodes", [])
+                        nodes = data if isinstance(data, list) else data.get("nodes", [])
                         for node in nodes:
                             if not isinstance(node, dict):
                                 continue
@@ -147,7 +147,7 @@ class EdgeProvisioningAgent:
                             status = str(node.get("status", ""))
                             prov = node.get("provisioning", {})
                             stage = str(prov.get("stage", "")) if isinstance(prov, dict) else ""
-                            if status == "in_progress" and stage == "claiming":
+                            if status == "in_progress" and stage in ("claiming", "token_issued"):
                                 ok = execute_provisioning_handshake(
                                     self._gateway_base,
                                     self._node_mac,

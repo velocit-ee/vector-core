@@ -79,7 +79,7 @@ class GatewayStateCache:
         node_status = "unreachable"
         try:
             data = self._fetcher(self.gateway_url, 1.5)
-            nodes = data.get("nodes", [])
+            nodes = data if isinstance(data, list) else data.get("nodes", [])
             if isinstance(nodes, list):
                 for n in nodes:
                     if isinstance(n, dict) and str(n.get("mac", "")).lower() == self.node_mac:
