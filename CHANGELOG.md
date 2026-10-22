@@ -8,196 +8,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed — phase 1 correctness & security pass
-
-Security
-- **Proxmox targets no longer ship a default `changeme` root password.** The
-  answer file now uses `root-password-hashed` fed from `target.password_hash`;
-  the plaintext template variable and its `changeme` fallback are gone, and
-  preflight fails when no hash is present.
-- **ISO checksums are always fetched over HTTPS**, never the (possibly
-  cert-downgraded) HTTP mirror. The checksum is fetched *before* the multi-GB
-  download and an image is never cached without being verified — a failed
-  checksum fetch now aborts instead of silently keeping an unverified ISO.
-- **The renderer state file is written `0600` in a `0700` directory** — it can
-  hold OPNsense API credentials across resumes.
-- The OpenTofu/Ansible backend and the native renderer now honor
-  `OPNSENSE_INSECURE` instead of hardcoding TLS verification off.
-
-Correctness
-- **OpenTofu backend now generates valid HCL.** `variables.tf` used
-  comma-separated block attributes (invalid HCL2), so `tofu init` could never
-  have succeeded. A golden-file test parses every generated `.tf` with a real
-  HCL parser in CI.
-- The OpenTofu renderer publishes `infra_manifest_path` in its outputs so the
-  Ansible phase can actually find the handoff manifest.
-- MAAS `distro_series` mapping now matches the real registry slugs
-  (`ubuntu-server`); Proxmox targets are rejected with a clear message unless
-  `maas.distro_series` is set. Honors the documented override.
-- `extract_api_credentials` parses the `<apikeys><item>` structure the
-  template actually renders (was looking for non-existent `<apikey>` tags).
-- The setup wizard's yes/no prompt honors an explicit "no" default and
-  re-asks on garbage instead of silently confirming.
-- The VNE manifest records the *actual* verification results instead of a
-  hardcoded all-clear; the seed-egress check is named honestly.
-- `manifest_output_dir` in `vme-config.yml` is now respected.
-
-Packaging
-- **The stack is now a single installable distribution.** One root
-  `pyproject.toml` builds `shared` + `vme` + `vne` (`pip install .` /
-  `pipx install .`); the three per-engine pyprojects (nonexistent build
-  backend, self-referential package discovery, top-level `shared` collision)
-  are removed. `install.sh` drops the PYTHONPATH launcher hack and also
-  installs the `vne` command for the handoff.
-- Declared the previously-undeclared `click` dependency (Typer 0.27+ no longer
-  pins it, so fresh installs broke at import).
-- The `opentofu_ansible` extra depends on `ansible-core` (2.15–2.17), not the
-  `ansible` meta-package whose versioning made the old constraint
-  unsatisfiable.
-
-Tests / CI
-- **New VNE test suite** (was zero): renderer HCL validity, config→intent,
-  config.xml round-trip, pipeline phase-gating, state resume/corruption/perms.
-- CI installs the package, proves the console scripts resolve, and runs every
-  suite from the repo root. 116 tests pass.
-
-### Added — nmap enrichment, MAAS backend, retry/structured-logging foundation
-
-**`shared/discovery/nmap_probe.py`** — optional nmap enrichment for the
-discovery toolkit
-- Subprocess invocation of `nmap -oX -`; XML parsed with stdlib `xml.etree`
-- Service-version detection (`-sV`) + best-effort OS family fingerprinting
-  (`-O`, root only); CPE strings on each enriched service
-- `--use-nmap auto|on|off` flag on `velocitee-discover scan` and
-  `vne join` (default `auto` — used if `nmap` is on PATH)
-- Strict license boundary documented: subprocess only, never imports a
-  Python wrapper (`python-nmap`/`python-libmaas` are GPL v2 and would
-  conflict with Apache 2.0)
-- `Service.nmap_product/nmap_version/nmap_extrainfo/nmap_cpe` and
-  `Host.os_guesses` populated when enrichment runs; `nmap_enrichment`
-  capability flag added to the report
-
-**VME — MAAS backend** *(new)*
-- `vme/backends/` package: `Backend` ABC + slug registry mirroring the
-  renderer pattern; `BuiltinBackend` placeholder + `MAASBackend` REST
-  client implementation
-- `vme deploy` dispatches on the new `backend:` field in
-  `vme-config.yml` (default `builtin` — zero behaviour change for
-  existing users); `backend: maas` hands off to a Canonical MAAS
-  region+rack controller via `MAAS_URL` + `MAAS_API_KEY`
-- OAuth 1.0 PLAINTEXT signer hand-rolled (no `python-libmaas` import to
-  avoid LGPL friction); MAAS REST client uses `requests` directly
-- `_maas_distro_series` translates VME's `target.os` slugs into MAAS
-  distro codenames (jammy/noble); falls back to passthrough for custom
-  MAAS images
-- 14 unit tests for registry + OAuth + URL canonicalisation +
-  distro-series mapping
-
-**`shared._retry` + tenacity-backed retry policy**
-- New `TransientAPIError` marker class + `transient_retry()` decorator
-  (3 attempts, exponential backoff capped at 8s, retries only on the
-  marker class — never on 4xx)
-- OPNsense + Proxmox + MAAS clients all share the policy: 5xx and
-  network errors retry transparently, user errors fail fast
-- Replaces hand-rolled retry loop in `_opnsense_client.py`
-
-**`shared.logging` + structlog stdlib bridge**
-- `configure()` helper wires structlog into stdlib `logging` so existing
-  `logging.getLogger(...)` calls keep working unchanged but emit
-  structured output
-- TTY autodetect — friendly key=value on a console, JSON for log
-  shippers; `VELOCITEE_LOG_FORMAT` and `VELOCITEE_LOG_LEVEL` env-var
-  overrides
-- VNE deploy/join + `velocitee-discover` CLIs now call `configure()`
-  instead of `logging.basicConfig`
-
-**Repository tooling**
-- `.pre-commit-config.yaml` — trailing-whitespace, end-of-file-fixer,
-  check-yaml/json/toml, ruff + ruff-format, plus a local hook that
-  validates every `*.schema.json` against Draft 7
-- CONTRIBUTING.md gains a *Pre-commit hooks* section
-
-**`velocitee-shared` 0.4.0** — adds `tenacity>=8.2` and `structlog>=24.0`
-to the dependency floor; `vme` and `vne` bump their shared dep accordingly.
-
-### Added — discovery toolkit & VNE Path B (join existing network)
-
-**`shared/discovery/` — common scanning, documentation & diagnostics tool**
-- `DiscoveryReport` Pydantic model (JSON + Markdown rendering) — single
-  artifact consumed by VNE join, VSE inventory, and VLE drift baselines
-- Local introspection (`network.py`): interfaces via `ip(8)` / sysfs,
-  default gateway via `ip route` / `/proc/net/route`, DNS resolvers from
-  `/etc/resolv.conf` (with systemd-resolved stub unwrap via `resolvectl`),
-  DHCP lease parsing from dhclient + networkd
-- Passive discovery (`passive.py`): kernel ARP/neighbor table, mDNS UDP/5353
-  multicast listener, SSDP UDP/1900 with single M-SEARCH probe
-- Active discovery (`active.py`): concurrent TCP-connect host sweep + port
-  scan over a 40-port management/infra port set; ThreadPoolExecutor, no
-  raw sockets, no scapy/nmap dep — works in unprivileged containers
-- Service fingerprinting (`fingerprint.py`): SSH banner, HTTP `<title>` +
-  `Server` header, HTTPS with TLS SAN extraction, optional SNMP v2c
-  `sysDescr.0` (hand-rolled BER, no pysnmp)
-- Router identification (`routers.py`): heuristic vendor detection with
-  confidence score for OPNsense, pfSense, MikroTik, UniFi, EdgeOS, OpenWrt,
-  Cisco IOS, FortiGate, Proxmox + a `generic-router` fallback
-- Standalone CLI (`velocitee-discover scan|show`) writes paired
-  `discovery-report.{json,md}` artifacts
-
-**`shared/discovery/adapters/` — vendor-specific join glue**
-- `RouterAdapter` ABC + slug registry, mirroring `Renderer`
-- `unmanaged` (always available, vendor-agnostic) and `opnsense` (live
-  state pull via existing `OPNsenseClient` when API creds present)
-  implementations; stubs for pfsense / mikrotik / unifi / edgeos / openwrt
-  / cisco / fortigate reserve the slugs
-
-**VNE — Path B implemented**
-- `vne join` command — scan ▸ identify ▸ confirm ▸ adapter execute ▸
-  manifest write. Read-only end-to-end (never mutates the router)
-- `vne/join.py` orchestrator; supports both `--manifest path/to/vme.json`
-  (extending a VME run) and standalone (synthesises a minimal manifest
-  from local hostname/IP)
-- VNE manifest schema gains a `mode: "deploy" | "join"` discriminator;
-  `joined_network` and `capabilities` blocks required when mode=join,
-  `opnsense`/`vlans`/`dns`/`verification` required when mode=deploy
-- Existing `vne deploy --join-existing` flag now forwards to `vne join`
-  with a deprecation warning instead of exiting 1
-
-**`velocitee-shared` 0.3.0** — packages discovery + adapters; bumps
-`vne` dependency floor; adds `velocitee-discover` console script.
-
-### Changed — relicense
-
-- **Engines relicensed from AGPL v3 → Apache License, Version 2.0.** All five
-  LICENSE files (root, vme, vne, vse, vle) replaced with the canonical Apache
-  2.0 text. Apache 2.0 is permissive — fork, modify, redistribute, embed in
-  proprietary products. The CLA we already had keeps the door open for
-  velocitee to offer alternative licensing arrangements in the future.
-- CLA updated to v2.0 — license-agnostic; references Apache 2.0 as the
-  current OSS release; explicit patent grant.
-- READMEs, pyproject `license` fields, marketing site copy, docs site, org
-  profile README all updated for consistency.
-- The "commercial license" pricing tier feature is dropped — Apache 2.0
-  already permits commercial use; the enterprise tier now sells on
-  private deployments, named support, training, and SLA.
-
-### Added
-
-**VNE — Network Configuration Engine** (initial implementation)
-- `velocitee.yml` VNE-block parser (`vne/config.py`) with Pydantic validation, translated into a provisioner-agnostic `VNEIntent` schema
-- `velocitee-native` provisioner — first-class Python backend that drives Proxmox VE and OPNsense REST APIs directly, with idempotency probes at every step and a versioned, resumable state file (`vne/state/vne.state.json`)
-- OPNsense first-boot `config.xml` generator (`vne/config_xml.py`) — sets root password (SHA-512 crypt via passlib), assigns WAN/LAN, enables the REST API
-- `opentofu+ansible` parallel backend — `OpenTofuRenderer` (pinned `bpg/proxmox` 0.66.2) creates infra and writes `infra_manifest.json`; `AnsibleRenderer` reads it and runs idempotent roles via the pinned `ansibleguy.opnsense` 1.30.1 collection. Hard phase gate: Phase 2 never runs after Phase 1 fails
-- 11 stub renderers registered for completeness: `ansible-only`, `pulumi`, `salt`, `chef`, `puppet`, `cloudformation`, `bicep`, `nix`, `cloud-init`, `helm`, `packer`
-- Verification gate (`vne/scripts/verify.py`) — checks API reachability, DNS resolution via OPNsense, internet egress (TCP not ICMP), and VLAN presence. Output manifest is not written unless every check passes
-- Entry point `vne/deploy.py` + thin `scripts/deploy.sh` wrapper. Pre-flight reports all missing env vars in one error
-- JSON Schema files for VNE input (VME manifest contract) and VNE output (consumed by VSE)
-
-**shared — Engine runtime library** (extended)
-- `shared/schema.py` — Pydantic models for the provisioner-agnostic internal schema (VLAN, DHCP, DNS, firewall, VM specs, `VNEIntent`)
-- `shared/renderer.py` — `Renderer` ABC; phase-tagged (`infra` / `config` / `both`)
-- `shared/pipeline.py` — phase-ordered orchestrator with hard gating between phases
-- `shared/renderer_registry.py` — provisioner-name → renderer-class registry; lazy-loaded
-- `shared/renderers/` — concrete renderer implementations and shared API clients (Proxmox, OPNsense)
+### Planned
+- **VSE (Vector Services Engine) Standalone Package:** Standalone orchestration for containerized service stacks and sovereign AI cleanrooms.
+- **VLE (Vector Lifecycle Engine) Daemon:** Continuous telemetry streaming, automated drift repair, and remote syslog collector.
 
 ### Engines
 <!-- ENGINE-STATUS:BEGIN region=engine-table-unreleased -->
@@ -211,32 +24,76 @@ to the dependency floor; `vme` and `vne` bump their shared dep accordingly.
 
 ---
 
-## [0.1.0] — 2026-04-24
-
-Initial public release of the velocitee engine stack.
+## [0.6.0] — 2026-10-22
 
 ### Added
-
-**VME — Metal Provisioning Engine**
-- PXE boot pipeline: dnsmasq (DHCP/TFTP) + nginx (HTTP) + iPXE, fully containerised via Docker Compose
-- Unattended OS install for Proxmox VE (kernel+initrd boot, live ISO fetch, initrd patching for NIC drivers and answer file embedding) and Ubuntu Server (cloud-init autoinstall)
-- Guided setup wizard (`vme setup`) — detects network interfaces, writes `vme-config.yml` interactively
-- Pre-flight checks (`vme preflight`) — Docker, interface, DHCP conflicts, TFTP port, disk space, firewall
-- Filtered deploy log streaming — one line per milestone, full logs written to `~/.velocitee/logs/`
-- OS image management (`vme images list/pull/clean`) with SHA-256 verification and resumable downloads
-- `vme reset` with granular flags (`--images`, `--config-only`, `--full`)
-- Handoff manifest written on success — structured JSON describing the provisioned machine for downstream engines
-
-**shared — Engine runtime library**
-- `shared/cli.py` — `make_app()`, `fatal()`, `warn()`, `run_app()`: clean CLI error handling for all engines (no Python tracebacks, typo suggestions on unknown commands)
-- `shared/manifest.py` — manifest build, validation, write, load, and `append_engine()` for pipeline continuity
-- `shared/schema.json` — JSON Schema v7 contract for the inter-engine handoff manifest
+- **Unified Modular `vector` CLI:** Installed as `vector` (aliased as `velocitee`) via `shared.vector_cli`. Provides universal status overview, topology discovery, and independent modular engine invocation.
+- **Independent Engine Execution:** Operators can enter at any stage of infrastructure maturity (`vector metal`, `vector network`, `vector services`, `vector lifecycle`, `vector discover`, or `vector run <module>`) without being forced through the bare-metal VME flow.
+- **Engine Nomenclature Standard:** Formally updated all engine names so the "V" represents **Vector**:
+  - **VME:** Vector Metal Engine
+  - **VNE:** Vector Network Engine
+  - **VSE:** Vector Services Engine
+  - **VLE:** Vector Lifecycle Engine
+- **Test Suite Expansion:** Added unit test coverage for the modular CLI (`shared/tests/test_vector_cli.py`), bringing total passing test suite to **397 tests**.
+- **Physical Hardware Gate:** 10/10 end-to-end acceptance tests verified on live edge appliances (`./harness/run.sh full-cycle`).
 
 ---
 
-*Releases before v0.1.0 were internal development iterations.*
+## [0.5.0] — 2026-10-15
 
-> Engine status (Planned / Alpha / Beta / Stable) is tracked at the top of this changelog
-> under the [Unreleased] section, sourced from `engines.json`. Per-release
-> status snapshots have been removed — they captured a moment in time that
-> stopped being useful once newer engines shipped.
+### Added
+- **Velocitee Prism v2.0 ("Bilberry"):** Decomposed sovereign AI appliance into a modular Python package (`vector/telia/target/prism`) running as a systemd service.
+- **Multilingual European PII Scrubbing:** High-precision entity detection across English, Estonian, Finnish, and Swedish (Luhn Mod-10 credit card, ISO 7064 IBAN, Estonian isikukood, Finnish HETU, Swedish personnummer, and currency amounts).
+- **Enterprise Company Profiles:** Runtime CRUD support for configurable compliance profiles (`default`, `telia-nordic-core`, `eu-finserv-strict`, `hermes-hybrid-agent`).
+- **Nous Hermes Agent Integration:** OpenAI-compatible proxy (`/v1/chat/completions`) with automatic prompt redaction/re-hydration, and native Model Context Protocol (MCP) HTTP JSON-RPC 2.0 tool server (`/api/v1/mcp`).
+- **Cryptographic Receipts:** HMAC-SHA256 audit receipts proving client data was scrubbed before external LLM transmission.
+- **Vector Gateway Separation:** Cleanly severed legacy Python router code, designating `vector-gateway` as a pure native Rust daemon (**v1.0.0 "Alder"**).
+
+---
+
+## [0.4.0] — 2026-08-31
+
+### Fixed — Phase 1 Correctness & Security Pass
+- **Proxmox Password Security:** Proxmox targets no longer ship a default `changeme` root password; answer files require `target.password_hash` with preflight verification.
+- **Secure Image Downloads:** ISO checksums are always verified over HTTPS before caching; unverified images abort immediately.
+- **State File Permissions:** Renderer state files containing OPNsense API credentials are restricted to `0600` permissions.
+- **Single Installable Distribution:** Root `pyproject.toml` packages `shared` + `vme` + `vne` as a unified distribution (`pip install -e .`), eliminating legacy PYTHONPATH wrappers.
+
+### Added
+- **Canonical MAAS Backend for VME:** Support for delegating bare-metal provisioning to existing Canonical MAAS controllers (`backend: maas`).
+- **Nmap Service Enrichment:** Subprocess nmap probe (`shared/discovery/nmap_probe.py`) for OS fingerprinting and service detection.
+- **Resilience & Retries:** `shared._retry` module using tenacity for exponential backoff on transient 5xx API errors across Proxmox, OPNsense, and MAAS.
+- **Engine Status SSOT:** Introduced `engines.json` as the single source of truth with automated Markdown region rendering (`tools/render_engine_status.py`).
+
+---
+
+## [0.3.0] — 2026-07-19
+
+### Added
+- **VNE Path B (`vne join`):** Non-invasive network topology discovery and router identification for existing infrastructure.
+- **Router Adapters:** Pluggable router adapters for OPNsense and unmanaged gateways.
+- **Vendor-Agnostic Scan Toolkit:** `velocitee-discover` CLI for local subnet ARP/mDNS/SSDP and TCP connect scanning.
+
+### Changed
+- **Relicense to Apache 2.0:** All engines relicensed from AGPL v3 to the permissive [Apache License, Version 2.0](LICENSE).
+- **Contributor License Agreement (CLA):** Updated to v2.0 with explicit patent grants.
+
+---
+
+## [0.2.0] — 2026-06-15
+
+### Added
+- **Vector Network Engine (VNE) Initial Implementation:** Declarative network intent parsing (`velocitee.yml`) to provision OPNsense VMs, VLANs, DHCP, DNS, and firewall rules on Proxmox VE.
+- **Dual Provisioner Backends:** `velocitee-native` (direct REST driver with resumable state) and `opentofu+ansible` (HCL generation with Ansible playbooks).
+- **Verification Gate:** Automated post-deployment checks verifying API reachability, DNS resolution, and egress connectivity before emitting handoff manifests.
+- **Manifest Pipeline:** Inter-engine handoff manifest contracts validated via JSON Schema.
+
+---
+
+## [0.1.0] — 2026-04-24
+
+### Added
+- **Vector Metal Engine (VME) Initial Public Release:** Containerized seed stack (dnsmasq, nginx, iPXE) for unattended PXE network booting of bare-metal hardware.
+- **Unattended OS Installers:** Support for Proxmox VE and Ubuntu Server autoinstall via cloud-init.
+- **Guided Setup Wizard:** Interactive `vme setup` detecting network interfaces and generating configuration.
+- **Shared CLI Framework:** Typer-based CLI utilities with clean error handling and suggested command correction.

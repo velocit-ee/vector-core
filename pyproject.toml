@@ -21,7 +21,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "velocitee"
-version = "0.1.0"
+version = "0.6.0"
 description = "velocitee core — open-source engine stack: bare metal to a documented, running infrastructure stack"
 readme = "README.md"
 license = { text = "Apache-2.0" }

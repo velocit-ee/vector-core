@@ -150,10 +150,14 @@ Velocitee Vector operates as a coordinated platform:
 
 | Category | Metric |
 | :--- | :--- |
+| **Current Core Release** | **`v0.6.0`** (Modular Independent Orchestrator) |
 | **Automated Tests** | **397 passing** across shared, VME, VNE, Prism, and CLI suites |
 | **Test Framework** | `pytest` with coverage across schema validation, REST clients, pipeline state, and CLI commands |
 | **Static Analysis** | Clean under `ruff check .` with zero lint warnings |
 | **Physical Hardware Gate** | 10/10 end-to-end acceptance tests verified on live edge hardware (`./harness/run.sh verify`) |
+| **GA Trajectory** | All four engines (VME, VNE, VSE, VLE) must be complete & stable before cutting `v1.0.0` |
+
+See [**ROADMAP.md**](./ROADMAP.md) for detailed milestone objectives and the botanical taxonomy framework.
 
 To execute the complete test suite locally:
 ```bash
