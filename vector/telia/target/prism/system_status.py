@@ -135,7 +135,8 @@ def collect_system_status(
 
     return {
         "service": "Velocitee Prism Sovereign AI Hub",
-        "version": "2.0.0",
+        "version": "2.0.0-bilberry",
+        "codename": "Bilberry",
         "status": "online" if activated else "quarantined",
         "activated": activated,
         "gateway_node_status": gateway_status,

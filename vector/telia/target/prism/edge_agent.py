@@ -79,7 +79,8 @@ def execute_provisioning_handshake(
         "kernel": platform.release(),
         "tpm_present": tpm_res if isinstance(tpm_res, bool) else False,
         "luks_active": luks_res if isinstance(luks_res, bool) else False,
-        "prism_version": "2.0.0",
+        "prism_version": "2.0.0-bilberry",
+        "prism_codename": "Bilberry",
     }
     raw_body = json.dumps(callback_payload, separators=(",", ":")).encode("utf-8")
     sig = hmac.new(callback_key.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()

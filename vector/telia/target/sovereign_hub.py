@@ -73,14 +73,14 @@ def main() -> None:
         print(f"\n[PRISM] Received signal {signum}; shutting down cleanly.")
         if edge_agent is not None:
             edge_agent.stop()
-        httpd.shutdown()
-        sys.exit(0)
+        import threading
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, handle_sig)
     signal.signal(signal.SIGINT, handle_sig)
 
     print("================================================================")
-    print("  Velocitee Prism v2.0 — Sovereign AI & Hermes Agent Hub")
+    print("  Velocitee Prism v2.0 'Bilberry' — Sovereign AI & Hermes Agent Hub")
     print(f"  Listening on:   http://{host}:{port}")
     print(f"  Gateway Check:  {DEFAULT_GATEWAY_URL} (MAC: {DEFAULT_NODE_MAC})")
     print("  OpenAI Proxy:   POST /v1/chat/completions")

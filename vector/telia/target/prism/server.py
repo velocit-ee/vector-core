@@ -103,7 +103,7 @@ def render_dashboard_html(active_profile_id: str) -> str:
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>Velocitee Prism v2.0 — Sovereign AI & Hermes Agent Hub</title>
+<title>Velocitee Prism v2.0 'Bilberry' — Sovereign AI & Hermes Agent Hub</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; background: #090d16; color: #e2e8f0; margin: 0; padding: 24px; }}
@@ -121,7 +121,7 @@ def render_dashboard_html(active_profile_id: str) -> str:
 <div class="container">
   <div class="header">
     <div>
-      <h1 style="margin:0;font-size:22px;">Velocitee Prism v2.0 — Sovereign AI &amp; Hermes Agent Hub</h1>
+      <h1 style="margin:0;font-size:22px;">Velocitee Prism v2.0 'Bilberry' — Sovereign AI &amp; Hermes Agent Hub</h1>
       <p style="margin:4px 0 0;color:#94a3b8;font-size:13px;">Active Company Profile: <strong>{active_profile_id}</strong> | OpenAI Proxy: <code>/v1/chat/completions</code> | MCP: <code>/api/v1/mcp</code></p>
     </div>
     <span class="badge">VLAN 10 ACTIVE</span>
@@ -186,7 +186,7 @@ def make_prism_handler(runtime: PrismRuntimeState):
     """Creates a request handler class bound to `runtime`."""
 
     class PrismRequestHandler(BaseHTTPRequestHandler):
-        server_version = "VelociteePrism/2.0.0"
+        server_version = "VelociteePrism/2.0.0-bilberry"
 
         def log_message(self, format_str: str, *args: object) -> None:
             if os.environ.get("PRISM_QUIET_LOGS") == "1":
@@ -290,7 +290,8 @@ def make_prism_handler(runtime: PrismRuntimeState):
                         "status": "online",
                         "activated": is_active,
                         "gateway_node_status": gw_status,
-                        "version": "2.0.0",
+                        "version": "2.0.0-bilberry",
+                        "codename": "Bilberry",
                     },
                 )
                 return

@@ -85,6 +85,8 @@ def build_hermes_manifest(host_url: str, registry: ProfileRegistry) -> Dict[str,
 
     return {
         "integration": "NousResearch/hermes-agent",
+        "prism_version": "2.0.0-bilberry",
+        "prism_codename": "Bilberry",
         "protocol_versions": {
             "openai_proxy": "v1",
             "mcp_jsonrpc": "2024-11-05",
@@ -219,7 +221,7 @@ def handle_mcp_jsonrpc(
             "id": rpc_id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "serverInfo": {"name": "velocitee-prism-mcp", "version": "2.0.0"},
+                "serverInfo": {"name": "velocitee-prism-mcp", "version": "2.0.0-bilberry", "codename": "Bilberry"},
                 "capabilities": {"tools": {"listChanged": True}},
             },
         }
