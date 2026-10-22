@@ -36,18 +36,11 @@ resilient foundation everywhere    kernel-enforced network rails                
 
 ### A. Open-Source Core $\rightarrow$ Gymnosperms / Conifers (*Pinophyta*)
 Deep-rooted evergreen timber providing permanent structural support across all environments.
-* **v1.0.0 Candidates (Conifer "A" Names):**
-  1. **Abies** (*Abies alba* / *Abies nordmanniana*) — Classical Latin genus for the majestic Silver Fir; alpine resilience, clean and timeless.
-  2. **Alerce** (*Fitzroya cupressoides*) — The ancient Patagonian Cypress; lives over 3,600 years, one of the oldest living trees on Earth.
-  3. **Arborvitae** (*Thuja occidentalis*) — Latin for *"Tree of Life"*; dense, hardy evergreen cedar known for enduring longevity.
-  4. **Araucaria** (*Araucariaceae*) — Ancient Jurassic-era conifer lineage (Monkey Puzzle / Norfolk Pine); unmatched structural toughness.
-  5. **Atlas** (*Cedrus atlantica*) — Atlas Cedar; iconic high-altitude mountain evergreen.
-  6. **Austrian** (*Pinus nigra*) — Austrian Pine; dense, deep-rooted, exceptionally storm-tolerant conifer.
-* **Subsequent Core Major Releases:**
-  * **v2.0.0: Balsam** (*Abies balsamea* — Balsam Fir)
-  * **v3.0.0: Cedar** (*Cedrus*)
-  * **v4.0.0: Douglas** (*Pseudotsuga menziesii* — Douglas Fir)
-  * **v5.0.0: Engelmann** (*Picea engelmannii* — Engelmann Spruce)
+* **v1.0.0: Arolla** (*Pinus cembra* — Arolla Pine / Swiss Stone Pine: iconic high-alpine conifer renowned for extreme longevity and cold-hardiness).
+* **v2.0.0: Balsam** (*Abies balsamea* — Balsam Fir).
+* **v3.0.0: Cedar** (*Cedrus* — Mountain Cedar).
+* **v4.0.0: Douglas** (*Pseudotsuga menziesii* — Douglas Fir).
+* **v5.0.0: Engelmann** (*Picea engelmannii* — Engelmann Spruce).
 
 ### B. Carrier Edge Rails $\rightarrow$ Deciduous Hardwood Trees (*Angiospermae*)
 * **v1.0.0: Alder** (*Alnus glutinosa* — Water-resistant, rot-proof hardwood used for bridge piles; native Rust daemon on OpenWrt).
@@ -126,4 +119,4 @@ flowchart TD
 - [ ] All four engines promoted to **Stable** in `engines.json`.
 - [ ] Long-term backward compatibility commitment for all public CLI interfaces and manifest formats.
 - [ ] Complete documentation published at `docs.velocit.ee`.
-- [ ] Codename: Selected Gymnosperm/Conifer (**Abies**, **Alerce**, **Arborvitae**, **Atlas**, etc.).
+- [ ] Codename: **Arolla** (*Pinus cembra* — Arolla Pine, Conifer).
