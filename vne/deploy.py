@@ -78,7 +78,7 @@ def _required_env_for(provisioner: str) -> list[str]:
 
 app = typer.Typer(
     name="vne",
-    help="VNE — Velocitee Network Configuration Engine.",
+    help="VNE — Vector Network Engine.",
     add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
     no_args_is_help=True,

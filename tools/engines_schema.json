@@ -50,7 +50,7 @@
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "Human name, e.g. 'velocitee metal provisioning engine'."
+          "description": "Human name, e.g. 'Vector Metal Engine'."
         },
         "phase": {
           "type": "integer",

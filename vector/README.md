@@ -18,12 +18,29 @@ While public cloud hyperscalers offer ease-of-use at the expense of data soverei
 
 ---
 
-## Product Editions
+## Product Architecture & Separation of Concerns
 
-| Edition | Target Environment | Footprint | Primary Role |
-| :--- | :--- | :--- | :--- |
-| **Telia Vector** (`vector/telia`) | Telia X2 (Technicolor DGA4330) & Telia F1 | < 45 MB RAM, < 40 MB flash | Carrier-grade edge gateway with quarantine VLAN & cryptographic claim tokens |
-| **Vector Standalone** | Enterprise x86/ARM Bare-Metal & KVM | Standard Linux runtime | Direct on-premises cluster orchestration |
+The Velocitee Vector platform is organized into three distinct tiers:
+
+1. **Carrier Infrastructure Rails (Vector Gateway — Rust):**
+   * Statically compiled sub-1MB native binary (`musl`) running directly on OpenWrt / CPE routers (GL-AXT1800, Telia X2, MediaTek Filogic).
+   * Enforces kernel-level zero-trust port isolation (VLAN 999), constant-time HMAC-SHA256 claim token validation, and single-use iPXE netboot staging.
+   * Codenames: **v1.0.0 Alder** (Current), **v2.0.0 Birch** (Future).
+   * Located in repository [`vector-gateway`](https://github.com/velocit-ee/vector-gateway).
+
+2. **Sovereign Edge Intelligence (Velocitee Prism — Python):**
+   * Multi-lingual European PII redaction cleanroom (EN/ET/FI/SV), enterprise company profiles, and Nous Hermes Agent proxy (OpenAI & MCP protocols).
+   * Runs natively on provisioned edge servers / hypervisors under systemd (`192.168.8.200:8081`).
+   * Codenames: **v1.0.0 Aronia** (Prototype), **v2.0.0 Bilberry** (Current production).
+   * Located in [`core/vector/telia/target/prism`](./telia/target/prism).
+
+3. **Modular Vector Engine Pipeline (Core — Python):**
+   * Composable, independent automation engines:
+     * **VME (Vector Metal Engine):** Bare-metal PXE provisioning & OS install.
+     * **VNE (Vector Network Engine):** OPNsense VM deployment or read-only network join.
+     * **VSE (Vector Services Engine):** Deploys containerized payloads and sovereign cleanrooms.
+     * **VLE (Vector Lifecycle Engine):** Telemetry, tamper-evident SHA-256 audit ledger, and drift detection.
+   * Invoked via the unified `vector` CLI or standalone engine commands.
 
 ---
 
@@ -31,28 +48,29 @@ While public cloud hyperscalers offer ease-of-use at the expense of data soverei
 
 ```
 vector/
-├── README.md               # Product overview & architecture
-└── telia/                  # Telia Carrier Edition (Telia Vector)
-    ├── daemon/             # Lightweight edge daemon, security, & REST API
-    │   ├── agent.py        # Main orchestrator & HTTP daemon (Port 8088)
-    │   ├── security.py     # HMAC-SHA256 claim token & RFC 5424 audit logger
-    │   ├── manifest_generator.py # Canonical Velocitee handoff manifest
-    │   └── dnsmasq.conf    # Hardened DHCP & TFTP configuration
-    ├── target/             # Target node payloads & cloud-init
+├── README.md               # Product overview & architectural separation
+└── telia/                  # Telia Carrier Edition
+    ├── target/             # Target node payloads & cleanrooms
+    │   ├── prism/          # Velocitee Prism v2.0 (Bilberry) sovereign AI package
     │   ├── sovereign_hub.py# Live legal workspace web service (Port 8081)
-    │   └── cloud-init/     # Automated OS partitioning & app provisioning
-    ├── assets/             # Static bootloaders (iPXE) & streaming netboot kernel
-    └── scripts/            # One-click demo & validation harnesses
-        └── demo.sh         # Interactive demo runner for presentations
+    │   └── edge_node_ssh.py# Secure SSH bridge to edge hardware
+    ├── assets/             # Static bootloaders (iPXE) & checksum manifests
+    └── scripts/            # Hardware demo & verification runners
 ```
 
 ---
 
-## Quick Start (Demo Mode)
+## Quick Start
+
+Run modules independently using the unified `vector` CLI:
 
 ```bash
-# From the repository root:
-./vector/telia/scripts/demo.sh
-```
+# Check overall status and detected manifests
+vector status
 
-Opens the Telia Vector Edge Gateway portal at `http://localhost:8088`, ready to authenticate and provision a local server node.
+# Run individual modules independently
+vector metal deploy --config vme-config.yml   # Bare-metal provisioning
+vector network join                           # Join existing network (read-only)
+vector services deploy --profile prism        # Deploy Prism AI cleanroom
+vector lifecycle audit                        # Verify SHA-256 audit chain
+```

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VME — Velocitee Metal Provisioning Engine CLI."""
+"""VME — Vector Metal Engine CLI."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from .os_registry import OS_REGISTRY, cached_entries
 from shared.cli import make_app, fatal, warn, run_app
 from vme import backends as vme_backends
 
-app = make_app("vme", help="Velocitee Metal Provisioning Engine — PXE-boot and unattended OS install.")
+app = make_app("vme", help="Vector Metal Engine — PXE-boot and unattended OS install.")
 images_app = typer.Typer(help="Manage cached OS images.", context_settings={"help_option_names": ["-h", "--help"]})
 app.add_typer(images_app, name="images")
 
